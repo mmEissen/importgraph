@@ -5,6 +5,8 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from graphviz import Digraph
 
 
+ModulePath = Tuple[str, ...]
+
 class ImportAction:
     def __init__(self,
         name: str,
@@ -13,7 +15,7 @@ class ImportAction:
         fromlist: Optional[List[str]],
         level: int,
         imported_module: ModuleType,
-    ):
+    ) -> None:
         self._name = name
         self._globals = the_globals
         self._locals = the_locals
@@ -24,7 +26,7 @@ class ImportAction:
     def from_name(self) -> str:
         return self._globals.get('__name__')
     
-    def _build_imported_paths(self) -> Iterable[Tuple[str]]:
+    def _build_imported_paths(self) -> Iterable[ModulePath]:
         """Fully qualified names for `from ... import ...` imports
 
         This resolves relative imports and returns one path for every imported item in the fromlist
@@ -35,7 +37,7 @@ class ImportAction:
             root_module += self._name.split('.')
         return [tuple(root_module + [from_item]) for from_item in self._fromlist]
     
-    def _last_module_in_path(self, path: Tuple[str]) -> Tuple[str]:
+    def _last_module_in_path(self, path: ModulePath) -> ModulePath:
         """Given a path, find the last item that refers to a module object"""
         module_path = self._imported_module.__name__.split('.')
         relative_path = self._name.split('.')[len(module_path):]
@@ -56,16 +58,6 @@ class ImportAction:
 
 
 class ImportGraph(Digraph):
-    def __init__(self, limit_dir: Optional[Set[str]]=None, **kwargs) -> None:
-        self._limit_dir = limit_dir
-        super().__init__(**kwargs)
-
-    def _is_import_relevant(self, imported_module: ModuleType) -> None:
-        if self._limit_dir is None:
-            return True
-        filename = imported_module.__file__
-        return any(filename.startswith(dir_name) for dir_name in self._limit_dir)
-
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
             self.edge(import_action.from_name(), name)
