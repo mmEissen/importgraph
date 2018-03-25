@@ -1,0 +1,9 @@
+digraph {
+	importgraph -> abc
+	importgraph -> argparse
+	importgraph -> builtins
+	importgraph -> sys
+	importgraph -> types
+	importgraph -> typing
+	importgraph -> graphviz
+}

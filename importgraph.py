@@ -1,11 +1,15 @@
+import abc
+import argparse
 import builtins
+import sys
 from types import ModuleType
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Callable
 
 from graphviz import Digraph
 
 
 ModulePath = Tuple[str, ...]
+ImportFunctionType = Callable[[str, Dict[str, Any], Dict[str, Any], List[str], int], Any]
 
 class ImportAction:
     def __init__(self,
@@ -57,26 +61,53 @@ class ImportAction:
         return ['.'.join(module_path) for module_path in imported_module_paths]
 
 
-class ImportGraph(Digraph):
+class AbstractImportGraph(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def add_import(self, import_action: ImportAction) -> None:
+        pass
+
+
+class DotImportGraph(AbstractImportGraph, Digraph):
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
             self.edge(import_action.from_name(), name)
 
 
-import_graph = ImportGraph()
-def import_wrapper(old_import):
-    def new_import(name, the_globals, the_locals, fromlist, level):
-        module = old_import(name, the_globals, the_locals, fromlist, level)
-        import_action = ImportAction(name, the_globals, the_locals, fromlist, level, module)
-        import_graph.add_import(import_action)
-        return module
-    return new_import
+class ImportGraphCommand:
+    def __init__(self):
+        self._arg_parser = argparse.ArgumentParser()
+        self._arg_parser.add_argument(
+            '-m', '--modules',
+            action='append',
+        )
+        self._import_graph = DotImportGraph()
+    
+    def _import_wrapper(self, old_import: ImportFunctionType) -> ImportFunctionType:
+        def new_import(
+            name: str,
+            the_globals: Dict[str, Any],
+            the_locals: Dict[str, Any],
+            fromlist: List[str],
+            level: int,
+        ) -> ModuleType:
+            module = old_import(name, the_globals, the_locals, fromlist, level)
+            import_action = ImportAction(name, the_globals, the_locals, fromlist, level, module)
+            self._import_graph.add_import(import_action)
+            return module
+        return new_import
+
+    def run(self, args: List[str]):
+        options = self._arg_parser.parse_args(args=args)
+        old_import = builtins.__import__
+        builtins.__import__ = self._import_wrapper(old_import)
+        for module_name in options.modules:
+            old_import(module_name)
+        self._import_graph.save()
+
 
 def main():
-    old_init = builtins.__import__
-    builtins.__import__ = import_wrapper(old_init)
-    import a_package.a_module
-    import_graph.save(filename='graph.dot')
+    command = ImportGraphCommand()
+    command.run(sys.argv[1:])
 
 if __name__ == '__main__':
     main()
