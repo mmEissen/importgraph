@@ -65,20 +65,40 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def add_import(self, import_action: ImportAction) -> None:
         pass
+    
+    @abc.abstractmethod
+    def save(self, filename: str) -> None:
+        pass
+    
+    @abc.abstractmethod
+    def to_string(self) -> str:
+        pass
 
 
 class DotImportGraph(AbstractImportGraph, Digraph):
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
             self.edge(import_action.from_name(), name)
+    
+    def to_string(self) -> str:
+        return self.source
+    
+    def save(self, filename: str) -> None:
+        Digraph.save(self, filename=filename)
 
 
 class ImportGraphCommand:
     def __init__(self):
         self._arg_parser = argparse.ArgumentParser()
         self._arg_parser.add_argument(
-            '-m', '--modules',
-            action='append',
+            'module',
+            nargs='+',
+            help='One or more modules to build an import graph for.',
+        )
+        self._arg_parser.add_argument(
+            '-o', '--output',
+            type=argparse.FileType('w'),
+            default=None,
         )
         self._import_graph = DotImportGraph()
     
@@ -100,9 +120,12 @@ class ImportGraphCommand:
         options = self._arg_parser.parse_args(args=args)
         old_import = builtins.__import__
         builtins.__import__ = self._import_wrapper(old_import)
-        for module_name in options.modules:
+        for module_name in options.module:
             old_import(module_name)
-        self._import_graph.save()
+        if options.output is not None:
+            self._import_graph.save(options.output.name)
+        else:
+            print(self._import_graph.to_string(), end='')
 
 
 def main():
