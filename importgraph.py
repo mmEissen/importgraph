@@ -15,20 +15,20 @@ class ImportAction:
     def __init__(self,
         name: str,
         the_globals: Dict[str, Any],
-        the_locals: Dict[str, Any],
         fromlist: Optional[List[str]],
         level: int,
         imported_module: ModuleType,
     ) -> None:
         self._name = name
         self._globals = the_globals
-        self._locals = the_locals
         self._fromlist = fromlist
         self._level = level
         self._imported_module = imported_module
     
     def from_name(self) -> str:
-        return self._globals.get('__name__')
+        if self._globals is None:
+            return '<unknown>'
+        return self._globals['__name__']
     
     def _build_imported_paths(self) -> Iterable[ModulePath]:
         """Fully qualified names for `from ... import ...` imports
@@ -105,13 +105,13 @@ class ImportGraphCommand:
     def _import_wrapper(self, old_import: ImportFunctionType) -> ImportFunctionType:
         def new_import(
             name: str,
-            the_globals: Dict[str, Any],
-            the_locals: Dict[str, Any],
-            fromlist: List[str],
-            level: int,
+            the_globals: Dict[str, Any]=None,
+            the_locals: Dict[str, Any]=None,
+            fromlist: Tuple[str]=(),
+            level: int=0,
         ) -> ModuleType:
             module = old_import(name, the_globals, the_locals, fromlist, level)
-            import_action = ImportAction(name, the_globals, the_locals, fromlist, level, module)
+            import_action = ImportAction(name, the_globals, fromlist, level, module)
             self._import_graph.add_import(import_action)
             return module
         return new_import
