@@ -12,6 +12,7 @@ ModulePath = Tuple[str, ...]
 ImportFunctionType = Callable[[str, Dict[str, Any], Dict[str, Any], List[str], int], Any]
 
 class ImportAction:
+    UNKNOWN_MODULE_NAME = '<unknown>'
     def __init__(self,
         name: str,
         the_globals: Dict[str, Any],
@@ -27,8 +28,11 @@ class ImportAction:
     
     def from_name(self) -> str:
         if self._globals is None:
-            return '<unknown>'
-        return self._globals['__name__']
+            return self.UNKNOWN_MODULE_NAME
+        try:
+            return self._globals['__name__']
+        except KeyError:
+            return self.UNKNOWN_MODULE_NAME
     
     def _build_imported_paths(self) -> Iterable[ModulePath]:
         """Fully qualified names for `from ... import ...` imports
