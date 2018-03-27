@@ -1,13 +1,13 @@
 import abc
 import argparse
 import builtins
+import os
 import re
 import sys
 from types import ModuleType
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Callable
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from graphviz import Digraph
-
 
 ModulePath = Tuple[str, ...]
 ImportFunctionType = Callable[[str, Dict[str, Any], Dict[str, Any], List[str], int], Any]
@@ -180,10 +180,36 @@ class ImportGraphCommand:
             return module
         return new_import
 
+    def _collect_module_names(self, directory, parents=()):
+        modules = []
+        if '__init__.py' not in os.listdir(directory) and parents:
+            return modules
+        for file_name in os.listdir(directory):
+            full_name = os.path.join(directory, file_name)
+            if os.path.isfile(full_name):
+                name, extention = os.path.splitext(file_name)
+                if extention == '.py':
+                    if name == '__init__' and parents:
+                        modules.append('.'.join(parents))
+                    else:
+                        modules.append('.'.join(parents + (name,)))
+            elif os.path.isdir(full_name) and not file_name == '__pycache__':
+                modules.extend(self._collect_module_names(full_name, parents=parents + (file_name,)))
+        return modules
+
+    def _module_names(self):
+        if not self._options.directory:
+            return self._options.module
+        modules = []
+        for directory in self._options.module:
+            sys.path.append(directory)
+            modules += self._collect_module_names(directory)
+        return modules
+
     def run(self):
         old_import = builtins.__import__
         builtins.__import__ = self._import_wrapper(old_import)
-        for module_name in self._options.module:
+        for module_name in self._module_names():
             old_import(module_name)
         if self._options.output is not None:
             self._import_graph.save(self._options.output.name)
