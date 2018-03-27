@@ -1,6 +1,7 @@
 import abc
 import argparse
 import builtins
+import re
 import sys
 from types import ModuleType
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Callable
@@ -45,11 +46,22 @@ class ImportAction:
             root_module += self._name.split('.')
         return [tuple(root_module + [from_item]) for from_item in self._fromlist]
     
-    def _get_module(self, name: str):
+    @staticmethod
+    def _get_module(name: str):
         try:
             return sys.modules[name]
         except KeyError:
             return None
+    
+    @classmethod
+    def module_file_path(cls, name: str):
+        module = cls._get_module(name)
+        if module is None:
+            return ''
+        try:
+            return module.__file__
+        except AttributeError:
+            return ''
 
     def _last_module_in_path(self, path: ModulePath) -> ModulePath:
         """Given a path, find the last item that refers to a module object"""
@@ -67,6 +79,20 @@ class ImportAction:
 
 
 class AbstractImportGraph(metaclass=abc.ABCMeta):
+    def __init__(self, filename_regex=None):
+        if filename_regex is not None:
+            self._filename_regex = re.compile(filename_regex)
+        else:
+            self._filename_regex = None
+        super().__init__()
+    
+    def _should_keep_edge(self, from_name: str, to_name: str) -> bool:
+        if self._filename_regex is None:
+            return True
+        from_match = self._filename_regex.fullmatch(ImportAction.module_file_path(from_name))
+        to_match = self._filename_regex.fullmatch(ImportAction.module_file_path(to_name))
+        return bool(from_match and to_match)
+    
     @abc.abstractmethod
     def add_import(self, import_action: ImportAction) -> None:
         pass
@@ -81,9 +107,22 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
 
 
 class DotImportGraph(AbstractImportGraph, Digraph):
+    def __init__(self, *args, **kwargs):
+        self._known_edges = set()
+        super().__init__(*args, **kwargs)
+
+    def _should_keep_edge(self, from_name: str, to_name: str) -> bool:
+        edge = (from_name, to_name)
+        if edge in self._known_edges:
+            return False
+        self._known_edges.add(edge)
+        return super()._should_keep_edge(from_name, to_name)
+
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
-            self.edge(import_action.from_name(), name)
+            edge = (import_action.from_name(), name)
+            if self._should_keep_edge(*edge):
+                self.edge(import_action.from_name(), name)
     
     def to_string(self) -> str:
         return self.source
@@ -104,8 +143,14 @@ class ImportGraphCommand:
             '-o', '--output',
             type=argparse.FileType('w'),
             default=None,
+            help='Define a file to save to instead of pronting to stdout'
         )
-        self._import_graph = DotImportGraph()
+        self._arg_parser.add_argument(
+            '-r', '--regex',
+            type=str,
+            default=None,
+        )
+        self._import_graph = None
     
     def _import_wrapper(self, old_import: ImportFunctionType) -> ImportFunctionType:
         def new_import(
@@ -123,6 +168,7 @@ class ImportGraphCommand:
 
     def run(self, args: List[str]):
         options = self._arg_parser.parse_args(args=args)
+        self._import_graph = DotImportGraph(filename_regex=options.regex)
         old_import = builtins.__import__
         builtins.__import__ = self._import_wrapper(old_import)
         for module_name in options.module:
@@ -130,7 +176,7 @@ class ImportGraphCommand:
         if options.output is not None:
             self._import_graph.save(options.output.name)
         else:
-            print(self._import_graph.to_string(), end='')
+            print(self._import_graph.to_string())
 
 
 def main():
