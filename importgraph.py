@@ -9,8 +9,10 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from graphviz import Digraph
 
+
 ModulePath = Tuple[str, ...]
 ImportFunctionType = Callable[[str, Dict[str, Any], Dict[str, Any], List[str], int], Any]
+
 
 class ImportAction:
     UNKNOWN_MODULE_NAME = '<unknown>'
@@ -84,6 +86,8 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
             self._filename_regex = re.compile(filename_regex)
         else:
             self._filename_regex = None
+        self._nodes = set()
+        self._edges = set()
         super().__init__()
     
     def _should_keep_edge(self, from_name: str, to_name: str) -> bool:
@@ -93,9 +97,21 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
         to_match = self._filename_regex.fullmatch(ImportAction.module_file_path(to_name))
         return bool(from_match and to_match)
     
-    @abc.abstractmethod
+    def _add_node(self, node: str) -> None:
+        if node not in self._nodes:
+            self._nodes.add(node)
+
+    def _add_edge(self, edge):
+        if self._should_keep_edge(*edge):
+            for node in edge:
+                if node not in self._nodes:
+                    self._add_node(node)
+            if edge not in self._edges:
+                self._add_edge(edge)
+
     def add_import(self, import_action: ImportAction) -> None:
-        pass
+        for name in import_action.imported_names():
+            self._add_edge((import_action.from_name(), name))
     
     @abc.abstractmethod
     def save(self, filename: str) -> None:
@@ -107,36 +123,19 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
 
 
 class DotImportGraph(AbstractImportGraph):
-    def __init__(self, *args, **kwargs):
-        self._known_nodes = set()
-        self._known_edges = set()
-        self._digraph = Digraph()
-        super().__init__(*args, **kwargs)
+    def _build_digraph(self):
+        digraph = Digraph()
+        for node in self._nodes:
+            digraph.node(node, shape='rectangle')
+        for edge in self._edges:
+            digraph.edge(*edge)
+        return digraph
 
-    def _should_keep_edge(self, from_name: str, to_name: str) -> bool:
-        edge = (from_name, to_name)
-        if edge in self._known_edges:
-            return False
-        self._known_edges.add(edge)
-        return super()._should_keep_edge(from_name, to_name)
-
-    def _add_edge(self, edge):
-        if self._should_keep_edge(*edge):
-            for node in edge:
-                if node not in self._known_nodes:
-                    self._known_nodes.add(node)
-                    self._digraph.node(node, shape='rectangle')
-            self._digraph.edge(*edge)
-
-    def add_import(self, import_action: ImportAction) -> None:
-        for name in import_action.imported_names():
-            self._add_edge((import_action.from_name(), name))
-    
     def to_string(self) -> str:
-        return self._digraph.source
+        return self._build_digraph().source
     
     def save(self, filename: str) -> None:
-        self._digraph.save(filename=filename)
+        self._build_digraph().save(filename=filename)
 
 
 class ImportGraphCommand:
