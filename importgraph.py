@@ -139,25 +139,26 @@ class DotImportGraph(AbstractImportGraph, Digraph):
 
 
 class ImportGraphCommand:
-    def __init__(self):
-        self._arg_parser = argparse.ArgumentParser()
-        self._arg_parser.add_argument(
+    def __init__(self, args=List[str]):
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
             'module',
             nargs='+',
             help='One or more modules to build an import graph for.',
         )
-        self._arg_parser.add_argument(
+        parser.add_argument(
             '-o', '--output',
             type=argparse.FileType('w'),
             default=None,
             help='Define a file to save to instead of pronting to stdout'
         )
-        self._arg_parser.add_argument(
+        parser.add_argument(
             '-r', '--regex',
             type=str,
             default=None,
         )
-        self._import_graph = None
+        self._options = parser.parse_args(args=args)
+        self._import_graph = DotImportGraph(filename_regex=self._options.regex)
     
     def _import_wrapper(self, old_import: ImportFunctionType) -> ImportFunctionType:
         def new_import(
@@ -173,22 +174,20 @@ class ImportGraphCommand:
             return module
         return new_import
 
-    def run(self, args: List[str]):
-        options = self._arg_parser.parse_args(args=args)
-        self._import_graph = DotImportGraph(filename_regex=options.regex)
+    def run(self):
         old_import = builtins.__import__
         builtins.__import__ = self._import_wrapper(old_import)
-        for module_name in options.module:
+        for module_name in self._options.module:
             old_import(module_name)
-        if options.output is not None:
-            self._import_graph.save(options.output.name)
+        if self._options.output is not None:
+            self._import_graph.save(self._options.output.name)
         else:
             print(self._import_graph.to_string())
 
 
 def main():
-    command = ImportGraphCommand()
-    command.run(sys.argv[1:])
+    command = ImportGraphCommand(sys.argv[1:])
+    command.run()
 
 if __name__ == '__main__':
     main()
