@@ -108,6 +108,7 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
 
 class DotImportGraph(AbstractImportGraph, Digraph):
     def __init__(self, *args, **kwargs):
+        self._known_nodes = set()
         self._known_edges = set()
         super().__init__(*args, **kwargs)
 
@@ -118,11 +119,17 @@ class DotImportGraph(AbstractImportGraph, Digraph):
         self._known_edges.add(edge)
         return super()._should_keep_edge(from_name, to_name)
 
+    def _add_edge(self, edge):
+        if self._should_keep_edge(*edge):
+            for node in edge:
+                if node not in self._known_nodes:
+                    self._known_nodes.add(node)
+                    self.node(node, shape='rectangle')
+            self.edge(*edge)
+
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
-            edge = (import_action.from_name(), name)
-            if self._should_keep_edge(*edge):
-                self.edge(import_action.from_name(), name)
+            self._add_edge((import_action.from_name(), name))
     
     def to_string(self) -> str:
         return self.source
