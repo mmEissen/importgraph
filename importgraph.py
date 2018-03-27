@@ -28,7 +28,7 @@ class ImportAction:
         self._fromlist = fromlist
         self._level = level
         self._imported_module = imported_module
-    
+
     def from_name(self) -> str:
         if self._globals is None:
             return self.UNKNOWN_MODULE_NAME
@@ -36,7 +36,7 @@ class ImportAction:
             return self._globals['__name__']
         except KeyError:
             return self.UNKNOWN_MODULE_NAME
-    
+
     def _build_imported_paths(self) -> Iterable[ModulePath]:
         """Fully qualified names for `from ... import ...` imports
 
@@ -47,14 +47,14 @@ class ImportAction:
         if self._name:
             root_module += self._name.split('.')
         return [tuple(root_module + [from_item]) for from_item in self._fromlist]
-    
+
     @staticmethod
     def _get_module(name: str):
         try:
             return sys.modules[name]
         except KeyError:
             return None
-    
+
     @classmethod
     def module_file_path(cls, name: str):
         module = cls._get_module(name)
@@ -81,22 +81,36 @@ class ImportAction:
 
 
 class AbstractImportGraph(metaclass=abc.ABCMeta):
-    def __init__(self, filename_regex=None) -> None:
+    def __init__(self, filename_regex=None, exclude_files=None) -> None:
         if filename_regex is not None:
             self._filename_regex = re.compile(filename_regex)
         else:
             self._filename_regex = None
+        exclude_files = exclude_files or []
+        self._exclude_regexes = [re.compile(exclude_re) for exclude_re in exclude_files]
         self._nodes = set()
         self._edges = set()
         super().__init__()
-    
-    def _should_keep_edge(self, from_name: str, to_name: str) -> bool:
+
+    def _files_match_regex(self, from_name: str, to_name: str) -> bool:
         if self._filename_regex is None:
             return True
         from_match = self._filename_regex.fullmatch(ImportAction.module_file_path(from_name))
         to_match = self._filename_regex.fullmatch(ImportAction.module_file_path(to_name))
         return bool(from_match and to_match)
-    
+
+    def _files_are_excluded(self, from_name: str, to_name: str) -> bool:
+        for regex in self._exclude_regexes:
+            if (
+                regex.fullmatch(ImportAction.module_file_path(from_name)) or
+                regex.fullmatch(ImportAction.module_file_path(to_name))
+            ):
+                return True
+        return False
+
+    def _should_keep_edge(self, from_name: str, to_name: str) -> bool:
+        return self._files_match_regex(from_name, to_name) and not self._files_are_excluded(from_name, to_name)
+
     def _add_node(self, node: str) -> None:
         if node not in self._nodes:
             self._nodes.add(node)
@@ -112,11 +126,11 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
             self._add_edge((import_action.from_name(), name))
-    
+
     @abc.abstractmethod
     def save(self, filename: str) -> None:
         pass
-    
+
     @abc.abstractmethod
     def to_string(self) -> str:
         pass
@@ -135,7 +149,7 @@ class DotImportGraph(AbstractImportGraph):
 
     def to_string(self) -> str:
         return self._build_digraph().source
-    
+
     def save(self, filename: str) -> None:
         self._build_digraph().save(filename=filename)
 
@@ -160,13 +174,21 @@ class ImportGraphCommand:
             default=None,
         )
         parser.add_argument(
+            '-x', '--exclude',
+            action='append',
+            default=[]
+        )
+        parser.add_argument(
             '-d', '--directory',
-            type=bool,
+            action='store_true',
             default=False,
         )
         self._options = parser.parse_args(args=args)
-        self._import_graph = DotImportGraph(filename_regex=self._options.regex)
-    
+        self._import_graph = DotImportGraph(
+            filename_regex=self._options.regex,
+            exclude_files=self._options.exclude,
+        )
+
     def _import_wrapper(self, old_import: ImportFunctionType) -> ImportFunctionType:
         def new_import(
             name: str,
