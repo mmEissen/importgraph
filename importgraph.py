@@ -81,7 +81,7 @@ class ImportAction:
 
 
 class AbstractImportGraph(metaclass=abc.ABCMeta):
-    def __init__(self, filename_regex=None):
+    def __init__(self, filename_regex=None) -> None:
         if filename_regex is not None:
             self._filename_regex = re.compile(filename_regex)
         else:
@@ -101,13 +101,13 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
         if node not in self._nodes:
             self._nodes.add(node)
 
-    def _add_edge(self, edge):
+    def _add_edge(self, edge: Tuple[str, str]) -> None:
         if self._should_keep_edge(*edge):
             for node in edge:
                 if node not in self._nodes:
                     self._add_node(node)
             if edge not in self._edges:
-                self._add_edge(edge)
+                self._edges.add(edge)
 
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
@@ -124,7 +124,9 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
 
 class DotImportGraph(AbstractImportGraph):
     def _build_digraph(self):
-        digraph = Digraph()
+        digraph = Digraph(name='Imports', graph_attr={
+            'splines': 'ortho',
+        })
         for node in self._nodes:
             digraph.node(node, shape='rectangle')
         for edge in self._edges:
