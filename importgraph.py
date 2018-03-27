@@ -106,10 +106,11 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
         pass
 
 
-class DotImportGraph(AbstractImportGraph, Digraph):
+class DotImportGraph(AbstractImportGraph):
     def __init__(self, *args, **kwargs):
         self._known_nodes = set()
         self._known_edges = set()
+        self._digraph = Digraph()
         super().__init__(*args, **kwargs)
 
     def _should_keep_edge(self, from_name: str, to_name: str) -> bool:
@@ -124,18 +125,18 @@ class DotImportGraph(AbstractImportGraph, Digraph):
             for node in edge:
                 if node not in self._known_nodes:
                     self._known_nodes.add(node)
-                    self.node(node, shape='rectangle')
-            self.edge(*edge)
+                    self._digraph.node(node, shape='rectangle')
+            self._digraph.edge(*edge)
 
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
             self._add_edge((import_action.from_name(), name))
     
     def to_string(self) -> str:
-        return self.source
+        return self._digraph.source
     
     def save(self, filename: str) -> None:
-        Digraph.save(self, filename=filename)
+        self._digraph.save(filename=filename)
 
 
 class ImportGraphCommand:
@@ -156,6 +157,11 @@ class ImportGraphCommand:
             '-r', '--regex',
             type=str,
             default=None,
+        )
+        parser.add_argument(
+            '-d', '--directory',
+            type=bool,
+            default=False,
         )
         self._options = parser.parse_args(args=args)
         self._import_graph = DotImportGraph(filename_regex=self._options.regex)
