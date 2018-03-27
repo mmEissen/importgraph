@@ -45,17 +45,18 @@ class ImportAction:
             root_module += self._name.split('.')
         return [tuple(root_module + [from_item]) for from_item in self._fromlist]
     
+    def _get_module(self, name: str):
+        try:
+            return sys.modules[name]
+        except KeyError:
+            return None
+
     def _last_module_in_path(self, path: ModulePath) -> ModulePath:
         """Given a path, find the last item that refers to a module object"""
-        module_path = self._imported_module.__name__.split('.')
-        relative_path = self._name.split('.')[len(module_path):]
-        obj = self._imported_module
-        for name in relative_path:
-            obj = getattr(obj, name)
-            if not isinstance(obj, ModuleType):
-                break
-            module_path.append(name)
-        return tuple(module_path)
+        for sub_path in (path[:-i] for i in range(len(path))):
+            if self._get_module('.'.join(sub_path)) is not None:
+                return sub_path
+        return tuple()
 
     def imported_names(self) -> Iterable[str]:
         if self._fromlist is None:
