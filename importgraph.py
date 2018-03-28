@@ -6,6 +6,7 @@ import re
 import sys
 from types import ModuleType
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from collections import defaultdict, deque
 
 from graphviz import Digraph
 
@@ -90,6 +91,9 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
         self._exclude_regexes = [re.compile(exclude_re) for exclude_re in exclude_files]
         self._nodes = set()
         self._edges = set()
+        self._adjacency_list = defaultdict(set)
+        self._reverse_adjacency_list = defaultdict(set)
+        self._node_hierarchy = {}
         super().__init__()
 
     def _files_match_regex(self, from_name: str, to_name: str) -> bool:
@@ -121,7 +125,37 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
                 if node not in self._nodes:
                     self._add_node(node)
             if edge not in self._edges:
+                tail, head = edge
                 self._edges.add(edge)
+                self._adjacency_list[tail].add(head)
+                self._reverse_adjacency_list[head].add(tail)
+
+    def _build_hierarchy(self):
+        self._node_hierarchy = defaultdict(int)
+        root_queue = deque(node for node in self._nodes if not self._reverse_adjacency_list[node])
+        sub_hierarchies = {node: {node} for node in root_queue}
+        while root_queue:
+            root_node = root_queue.popleft()
+            work_queue = deque([(root_node, 0)])
+            while work_queue:
+                node, level = work_queue.popleft()
+                for other_root, children in sub_hierarchies.items():
+                    if other_root == root_node:
+                        continue
+                    if node in children:
+                        current_node_level = self._node_hierarchy[node]
+                        offset = current_node_level - level
+                        for node in children:
+                            self._node_hierarchy[node] -= offset
+                        del sub_hierarchies[other_root]
+                        break
+                else: # if loop didn't break
+                    self._node_hierarchy[node] = level
+                    work_queue.extend((child, level + 1) for child in self._adjacency_list[node])
+                    sub_hierarchies[root_node].add(node)
+        min_level = min(self._node_hierarchy.values())
+        for node in self._node_hierarchy:
+            self._node_hierarchy[node] -= min_level
 
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
