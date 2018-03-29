@@ -5,7 +5,7 @@ import os
 import re
 import sys
 from types import ModuleType
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Mapping
 from collections import defaultdict, deque
 
 from graphviz import Digraph
@@ -88,13 +88,19 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
         else:
             self._filename_regex = None
         exclude_files = exclude_files or []
+        self.nodes = set()  # type: Set[str]
         self._exclude_regexes = [re.compile(exclude_re) for exclude_re in exclude_files]
-        self._nodes = set()
-        self._edges = set()
-        self._adjacency_list = defaultdict(set)
-        self._reverse_adjacency_list = defaultdict(set)
-        self._node_hierarchy = {}
+        self._edges = set()  # type: Set[Tuple[str, str]]
+        self._adjacency_list = defaultdict(set)  # type: Mapping[str, Set[str]]
+        self._reverse_adjacency_list = defaultdict(set)  # type: Mapping[str, Set[str]]
+        self._node_hierarchy = {}  # type: Mapping[str, int]
         super().__init__()
+    
+    def imported_modules(self, node: str) -> Optional[Set[str]]:
+        return self._adjacency_list.get(node)
+    
+    def importing_modules(self, node: str) -> Optional[Set[str]]:
+        return self._reverse_adjacency_list.get(node)
 
     def _files_match_regex(self, from_name: str, to_name: str) -> bool:
         if self._filename_regex is None:
@@ -116,23 +122,22 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
         return self._files_match_regex(from_name, to_name) and not self._files_are_excluded(from_name, to_name)
 
     def _add_node(self, node: str) -> None:
-        if node not in self._nodes:
-            self._nodes.add(node)
+        if node not in self.nodes:
+            self.nodes.add(node)
 
     def _add_edge(self, edge: Tuple[str, str]) -> None:
-        if self._should_keep_edge(*edge):
-            for node in edge:
-                if node not in self._nodes:
-                    self._add_node(node)
-            if edge not in self._edges:
-                tail, head = edge
-                self._edges.add(edge)
-                self._adjacency_list[tail].add(head)
-                self._reverse_adjacency_list[head].add(tail)
+        for node in edge:
+            if node not in self.nodes:
+                self._add_node(node)
+        if edge not in self._edges:
+            tail, head = edge
+            self._edges.add(edge)
+            self._adjacency_list[tail].add(head)
+            self._reverse_adjacency_list[head].add(tail)
 
     def _build_hierarchy(self):
         self._node_hierarchy = defaultdict(int)
-        root_queue = deque(node for node in self._nodes if not self._reverse_adjacency_list[node])
+        root_queue = deque(node for node in self.nodes if not self.importing_modules(node))
         sub_hierarchies = {node: {node} for node in root_queue}
         while root_queue:
             root_node = root_queue.popleft()
@@ -151,7 +156,7 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
                         break
                 else: # if loop didn't break
                     self._node_hierarchy[node] = level
-                    work_queue.extend((child, level + 1) for child in self._adjacency_list[node])
+                    work_queue.extend((child, level + 1) for child in self.imported_modules(node))
                     sub_hierarchies[root_node].add(node)
         min_level = min(self._node_hierarchy.values())
         for node in self._node_hierarchy:
@@ -159,7 +164,9 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
 
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
-            self._add_edge((import_action.from_name(), name))
+            edge = (import_action.from_name(), name)
+            if self._should_keep_edge(*edge):
+                self._add_edge(edge)
 
     @abc.abstractmethod
     def save(self, filename: str) -> None:
@@ -170,12 +177,17 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
         pass
 
 
+class CouplingGraph:
+    def __init__(self, import_graph: AbstractImportGraph) -> None:
+        self._import_graph = import_graph
+
+
 class DotImportGraph(AbstractImportGraph):
     def _build_digraph(self):
         digraph = Digraph(name='Imports', graph_attr={
             'splines': 'ortho',
         })
-        for node in self._nodes:
+        for node in self.nodes:
             digraph.node(node, shape='rectangle')
         for edge in self._edges:
             digraph.edge(*edge)
@@ -228,7 +240,7 @@ class ImportGraphCommand:
             name: str,
             the_globals: Dict[str, Any]=None,
             the_locals: Dict[str, Any]=None,
-            fromlist: Tuple[str]=(),
+            fromlist: List[str]=(),
             level: int=0,
         ) -> ModuleType:
             module = old_import(name, the_globals, the_locals, fromlist, level)
