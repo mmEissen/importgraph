@@ -1,9 +1,9 @@
-from typing import Any, Dict, Optional
-from unittest import TestCase
+from typing import Any, Dict, List, Optional, Set, Tuple
+from unittest.mock import MagicMock
 
 import pytest
 
-from importgraph import ImportAction
+from importgraph import ImportAction, ModulePath
 
 
 class TestImportAction:
@@ -23,5 +23,37 @@ class TestImportAction:
 
         assert from_name == expected_result
 
-    def test_build_imported_paths(self, import_action) -> None:
-        pass
+    @pytest.mark.parametrize(
+        'name,fromlist,level,expected_result',
+        [
+            # from . import module2
+            ('', ['module2'], 1, {('some', 'module2')}),
+            # from .module2 import SomeClass
+            ('module2', ['SomeClass'], 1, {('some', 'module2', 'SomeClass')}),
+            # from .. import module
+            ('', ['module'], 2, {('module',)}),
+            # from some.module1 import SomeClass
+            ('some.module2', ['SomeClass'], 0, {('some', 'module2', 'SomeClass')}),
+            # from . import module2, module3
+            ('', ['module2', 'module3'], 1, {('some', 'module2'), ('some', 'module3')}),
+        ],
+    )
+    def test_build_imported_paths(
+        self,
+        name: str,
+        fromlist: Optional[List[str]],
+        level: int,
+        expected_result: Set[ModulePath],
+        import_action: ImportAction,
+    ) -> None:
+        import_action.from_name = MagicMock(return_value='some.module')
+        import_action._name = name
+        import_action._level = level
+        import_action._fromlist = fromlist
+
+        import_paths = import_action._build_imported_paths()
+
+        import_paths = list(import_paths)
+        import_paths_set = set(import_paths)
+        assert len(import_paths) == len(import_paths_set)
+        assert import_paths_set == expected_result
