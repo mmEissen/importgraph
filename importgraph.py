@@ -16,7 +16,9 @@ ImportFunctionType = Callable[[str, Dict[str, Any], Dict[str, Any], List[str], i
 
 
 class ImportAction:
+
     UNKNOWN_MODULE_NAME = '<unknown>'
+    
     def __init__(self,
         name: str,
         the_globals: Dict[str, Any],
