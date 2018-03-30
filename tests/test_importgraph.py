@@ -1,8 +1,10 @@
-import pytest
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 from unittest import TestCase
 
+import pytest
+
 from importgraph import ImportAction
+
 
 class TestImportAction:
 
