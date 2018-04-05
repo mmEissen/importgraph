@@ -163,7 +163,7 @@ class AbstractImportGraph(metaclass=abc.ABCMeta):
         min_level = min(self._node_hierarchy.values())
         for node in self._node_hierarchy:
             self._node_hierarchy[node] -= min_level
-
+    
     def add_import(self, import_action: ImportAction) -> None:
         for name in import_action.imported_names():
             edge = (import_action.from_name(), name)
@@ -202,34 +202,49 @@ class DotImportGraph(AbstractImportGraph):
         self._build_digraph().save(filename=filename)
 
 
+class ModuleClusterer(AbstractImportGraph):
+    def __init__(self, import_graph: AbstractImportGraph):
+        self ._import_graph = import_graph
+
+
 class ImportGraphCommand:
     def __init__(self, args=List[str]):
         parser = argparse.ArgumentParser()
         parser.add_argument(
             'module',
             nargs='+',
-            help='One or more modules to build an import graph for.',
+            help='The name of the module to build an import graph from. All specified modules'
+            ' will be imported and an import graph will be build for all subsequent imports.',
         )
         parser.add_argument(
             '-o', '--output',
             type=argparse.FileType('w'),
             default=None,
-            help='Define a file to save to instead of pronting to stdout'
+            help='Specify a file to save the output to.'
         )
         parser.add_argument(
             '-r', '--regex',
             type=str,
             default=None,
+            help='Define a (python) regex to filter all imports with. This regex will be'
+            ' applied to the filenames of an imported module. If the regex does not fully match the'
+            ' filename, the module will not be saved to the graph (subsequent imports will still appear).',
         )
         parser.add_argument(
             '-x', '--exclude',
             action='append',
-            default=[]
+            default=[],
+            help='Define a regex to exclude certain modules. If this regex fully matches the filename then'
+            ' the module will not be saved on the import graph. This option may be used multiple times to'
+            ' exclude multiple patterns.',
         )
         parser.add_argument(
             '-d', '--directory',
             action='store_true',
             default=False,
+            help='Use directory names instead of module names. This will import all modules in the specified'
+            ' directories recursively. All specified directories will be added to the sys.path to ensure'
+            ' that the modules can be found.',
         )
         self._options = parser.parse_args(args=args)
         self._import_graph = DotImportGraph(
