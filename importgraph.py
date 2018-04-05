@@ -203,8 +203,8 @@ class DotImportGraph(AbstractImportGraph):
 
 
 class ModuleClusterer(AbstractImportGraph):
-    def __init__(self, import_graph: AbstractImportGraph):
-        self ._import_graph = import_graph
+    def __init__(self, import_graph: AbstractImportGraph) -> None:
+        self._import_graph = import_graph
 
 
 class ImportGraphCommand:
