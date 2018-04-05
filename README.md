@@ -16,3 +16,10 @@ graph. For example, to create an svg output use:
 ```
 importgraph.py some.module | dot -Tsvg > graph.svg
 ```
+
+For example, running
+```
+python importgraph.py -r ".*/flask/.*" flask | dot -Tsvg > graph.svg
+```
+will produce the following graph:
+![Flask Import Graph](https://raw.githubusercontent.com/mmEissen/importgraph/master/documentation/graph.png)
