@@ -70,7 +70,7 @@ class ImportAction:
 
     def _last_module_in_path(self, path: ModulePath) -> ModulePath:
         """Given a path, find the last item that refers to a module object"""
-        for sub_path in (path[:-i] for i in range(len(path))):
+        for sub_path in (path[:i] for i in reversed(range(len(path) + 1))):
             if self._get_module('.'.join(sub_path)) is not None:
                 return sub_path
         return tuple()
