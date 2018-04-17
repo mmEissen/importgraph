@@ -57,3 +57,14 @@ class TestImportAction:
         import_paths_set = set(import_paths)
         assert len(import_paths) == len(import_paths_set)
         assert import_paths_set == expected_result
+
+    def test_last_module_in_path_returns_full_path_module_not_none(
+        self,
+        import_action: ImportAction,
+    ) -> None:
+        import_action._get_module = MagicMock()
+        path = ('some', 'module', 'path')
+
+        result = import_action._last_module_in_path(path)
+
+        assert result == path
